@@ -1,0 +1,259 @@
+<!DOCTYPE HTML>
+<html>
+    <head>
+        <meta http-equiv="Content-Type" content="text/html; charset=utf-8">
+        <title>Highstock Example</title>
+
+        <style type="text/css">
+
+        </style>
+    </head>
+    <body>
+<script src="https://code.jquery.com/jquery-3.1.1.min.js"></script>
+<script src="/static/highstock.js"></script>
+<script src="/static/modules/exporting.js"></script>
+
+<table>
+    <tr>
+        <th>回测收益</th>
+        <th>回测年化收益</th>
+        <th>基准收益</th>
+        <th>基准年化收益</th>
+        <th>Alpha</th>
+        <th>Beta</th>
+        <th>Sharpe</th>
+        <th>Sortino</th>
+        <th>Information Ratio</th>
+        <th>Volatility</th>
+        <th>最大回撤</th>
+        <th>Tracking Error</th>
+        <th>Downside Risk</th>
+    </tr>
+    <tr class="summary">
+        <td>{{ summary["total_returns"] * 100 }}%</td>
+        <td>{{ summary["annualized_returns"] * 100 }}%</td>
+        <td> {{ summary["benchmark_total_returns"] * 100 }}% </td>
+        <td>{{ summary["benchmark_annualized_returns"] * 100 }}%</td>
+        <td>{{ summary["alpha"] }}</td>
+        <td>{{ summary["beta"] }} </td>
+        <td>{{ summary["sharpe"] }} </td>
+        <td>{{ summary["sortino"] }} </td>
+        <td>{{ summary["information_ratio"] }} </td>
+        <td>{{ summary["volatility"] }} </td>
+        <td>{{ summary["max_drawdown"] }} </td>
+        <td>{{ summary["tracking_error"] }} </td>
+        <td>{{ summary["downside_risk"] }} </td>
+    </tr>
+</table>
+
+
+<div id="container" style="height: 600px; min-width: 310px"></div>
+
+
+        <script type="text/javascript">
+$(document).ready(function(){
+d = data = {{ data | tojson }};
+var summary = data['summary'];
+var portfolio = data['portfolio'];
+var benchmark_portfolio = data['benchmark_portfolio'];
+var stock_account = data['stock_account'];
+var stock_position = data['stock_position'];
+var trades = data['trades'];
+
+
+        var dataLength = portfolio.length ,
+        // set the allowed units for data grouping
+        groupingUnits = [[
+            'week',                         // unit name
+            [1]                             // allowed multiples
+        ], [
+            'month',
+            [1, 2, 3, 4, 6]
+        ]],
+        i = 0;
+    var portfolio_unit_value = [];
+    var benchmark_portfolio_unit_value = [];
+    var profit_unit_value = [];
+    var daily_income = [];
+
+
+    for (i = 1 ; i < dataLength; i += 1) {
+        portfolio_unit_value.push(
+            {
+            x: portfolio[i][0],
+            y: portfolio[i][5] * 100 - 100,
+            name: portfolio[i][0],
+            labels:{
+                format: '{y}%'
+            }
+            }
+            );
+        benchmark_portfolio_unit_value.push([
+            benchmark_portfolio[i][0],
+            benchmark_portfolio[i][5] * 100 - 100
+            ]);
+
+
+        profit_unit_value.push([
+            benchmark_portfolio[i][0],
+           portfolio[i][5] -  benchmark_portfolio[i][5] * 100 - 100
+            ]);
+
+
+        income = 0
+        if(i > 1){
+                daily_income.push([
+                    benchmark_portfolio[i][0],
+                    stock_account[i][4] - stock_account[i-1][4]
+                    ]);    
+
+        }
+    };
+
+    stock_operation = {};
+    for (i = 1; i < trades.length; i += 1){
+        row = trades[i];
+        if(!stock_operation[row[0]]){
+            stock_operation[row[0]] = [0,0]
+        }
+        if(row[8] == "BUY"){
+            stock_operation[row[0]][0] += row[4] * row[3];
+        }else if(row[8] == "SELL"){
+            stock_operation[row[0]][1] -= row[4] * row[3];
+        }
+    };
+
+
+// TODO sort the data
+    stock_buy = [];
+    var stock_sell = [];
+    jQuery.each(stock_operation, function(date, values){
+        stock_buy.push([parseInt(date), values[0]]);
+        stock_sell.push([parseInt(date), values[1]]);
+    });
+
+    $("table tr.summary td").each(function(){
+        $(this).text(summary[$(this).text()]);
+    });
+
+
+    // create the chart
+    Highcharts.stockChart('container', {
+
+        rangeSelector: {
+            selected: 1
+        },
+
+        title: {
+            text: '策略回测'
+        },
+
+        yAxis: [{
+            labels: {
+                align: 'right',
+                format: "{value}%"
+            },
+            title: {
+                text: '累计收益'
+            },
+            height: '30%',
+            lineWidth: 2
+        }, {
+            labels: {
+                align: 'right',
+            },
+            title: {
+                text: '每日盈亏'
+            },
+            top: '33%',
+            height: '30%',
+            offset: 0,
+            lineWidth: 2
+        },
+        {
+            labels: {
+                align: 'right',
+            },
+            title: {
+                text: '成交记录'
+            },
+            top: '66%',
+            height: '30%',
+            offset: 0,
+            lineWidth: 2
+        }
+
+        ],
+        tooltip: {
+            split: true
+        },
+
+        series: [{
+            name: '策略累计收益',
+            data: portfolio_unit_value,
+            dataGrouping: {
+                units: groupingUnits
+            },
+            tooltip: {
+                pointFormat: '策略累计收益: {point.y}%',
+                valueDecimals: 2
+            },
+        },
+        {
+            name: '基准累计收益',
+            data: benchmark_portfolio_unit_value,
+            dataGrouping: {
+                units: groupingUnits
+            },tooltip: {
+                pointFormat: '基准累计收益: {point.y}%',
+                valueDecimals: 2
+            }
+        }, 
+        {
+            type: 'column',
+            name: '当日盈亏',
+            data: daily_income,
+            yAxis: 1,
+            color: "red",
+            negativeColor: "green",
+            dataGrouping: {
+                units: groupingUnits
+            },
+            tooltip: {
+                // pointFormat: '当日盈亏: {point.y}',
+                pointFormatter: function(){
+                    if(this.y.toFixed(2) > 0 ){
+                        return "当日收益: " + String(this.y.toFixed(2))
+                    }else{
+                        return "当日亏损: " + String(Math.abs(this.y).toFixed(2))
+                    }
+                },
+                valueDecimals: 2
+            }
+        }
+        ,
+        {
+            type: 'column',
+            name: '当日买入',
+            data: stock_buy,
+            yAxis: 2,
+            dataGrouping: {
+                units: groupingUnits
+            }
+        },
+        {
+            type: 'column',
+            name: '当日卖出',
+            data: stock_sell,
+            yAxis: 2,
+            dataGrouping: {
+                units: groupingUnits
+            }
+        }
+        ]
+    });
+});
+
+        </script>
+    </body>
+</html>
